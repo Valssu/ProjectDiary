@@ -5,13 +5,12 @@ import sqlite3
 import os
 import datetime
 
-# Initialize the main window
+# tKinter root 
 root = Tk()
 root.geometry('600x400')
 root.title("Programming Diary")
 root.resizable(False, False)
 
-# Define diary_listbox as a global variable
 diary_listbox = None
 
 def database_exists(db_file):
@@ -22,34 +21,39 @@ current_diary = ""
 global diary_type
 diary_type = ""
 
-# Function to create a database and the corresponding table
+# Luo tietokannan 
 def create_database_and_table(db_name, db_type):
     db_dir = "Databases"
     current_dir = os.path.dirname(os.path.abspath(__file__))
+    print("Current directory:", current_dir)
+    print("Database directory:", db_dir)
     db_file = os.path.join(current_dir, db_dir, f'{db_name}.db')
+    
     if not os.path.exists(os.path.join(current_dir, db_dir)):
-        os.makedirs(os.path.join(current_dir, db_dir))  # Create the directories if they don't exist
+        try:
+            os.makedirs(os.path.join(current_dir, db_dir))
+        except Exception as e:
+            print("Error: ", e)
+    
     if not database_exists(db_file):
         conn = sqlite3.connect(db_file)
         cursor = conn.cursor()
         cursor.execute(f'''
-               CREATE TABLE IF NOT EXISTS {db_name} (
-                    Date DATE, Second TEXT, Info TEXT, Mood TEXT, Diary_Type TEXT
-                )
-            ''')
-            # Inserting Diary_Type value
+            CREATE TABLE IF NOT EXISTS {db_name} (
+                Date DATE, Second TEXT, Info TEXT, Mood TEXT, Diary_Type TEXT
+            )
+        ''')
         cursor.execute(f'''
-               INSERT INTO {db_name} (Diary_Type) VALUES (?)
-            ''', (db_type,))
+            INSERT INTO {db_name} (Diary_Type) VALUES (?)
+        ''', (db_type,))
         conn.commit()
+        conn.close()
         messagebox.showinfo("Success", f"Database '{db_name}' with structure '{db_type}' created successfully")
     else:
         messagebox.showerror("Error", f"Diary with name '{db_name}' already exists")
 
-    
-
 def import_click(selected_diary):
-    diary_name = selected_diary.split(" - ")[0]  # Extract only the diary name
+    diary_name = selected_diary.split(" - ")[0]  # Ottaa vaan nimen
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
     db_dir = "Databases"
@@ -65,8 +69,8 @@ def import_click(selected_diary):
     date_input = entry_date.get()
     tasks_input = entry_tasks.get()
     
-    # Retrieve text from the entry_info Text widget
-    info_input = entry_info.get("1.0", END).strip()  # Get all text from line 1, character 0 to end, and strip any leading/trailing whitespace
+    # Hakee tekstin
+    info_input = entry_info.get("1.0", END).strip()
     
     review_input = entry_review.get()
 
@@ -83,16 +87,27 @@ def import_click(selected_diary):
         if conn:
             conn.close()
 
-
-
+# Koti sivu
 def Home_page():
     def save_inputs():
-        input_name = diary_name.get()
+        input_name = diary_name.get().strip()
         input_type = diary_type.get(diary_type.curselection())
-        if input_name and input_type:
-            create_database_and_table(input_name, input_type)
-        else:
-            messagebox.showerror("Error", "Please enter both Diary Name and select a Diary Type.")
+
+        # Tarkistaa mikäli on tyhjää tai tilaa
+        if not input_name or ' ' in input_name:
+            messagebox.showerror("Error", "Diary Name cannot be empty or contain spaces.")
+            return
+        elif not input_type:
+            messagebox.showerror("Error", "Please select a Diary Type.")
+            return
+
+        # Erikoismerkkien esto
+        if any(char in input_name for char in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']):
+            messagebox.showerror("Error", "Diary Name contains invalid characters.")
+            return
+
+        create_database_and_table(input_name, input_type)
+    
     home_frame = tk.Frame(main_frame)
 
     label = tk.Label(main_frame, text="Diary Name:", bg='#211522', fg='white')
@@ -100,7 +115,7 @@ def Home_page():
 
     diary_name = tk.Entry(main_frame, bg='#211522', fg='white')
     diary_name.place(x=170, y=50)
-
+    # Vaihtoehdot
     lbl = Label(main_frame, text="Which type of diary?", bg='#211522', fg='white')
     diary_type = Listbox(main_frame, bg='#211522', fg='white')
     diary_type.insert(1, "Personal")
@@ -113,7 +128,6 @@ def Home_page():
     create_button = tk.Button(main_frame, text='New diary', bg='#211522', fg='white', command=save_inputs)
     create_button.place(x=130, y=300)
     home_frame.pack()
-
 
 
 def get_diaries():
@@ -129,104 +143,99 @@ def get_diaries():
                 last_modified_date = datetime.datetime.fromtimestamp(last_modified_time).strftime('%Y-%m-%d %H:%M:%S')
                 diaries.append({"name": diary_name, "last_change": last_modified_date})
     return diaries
-
-    
-# Constants for pagination
+# Tiedon määrä per sivu
 RECORDS_PER_PAGE = 1
-
 def open_selected():
     selection = diary_listbox.curselection()
     if selection:
         selected_diary = diary_listbox.get(selection[0])
         diary_name = selected_diary.split(" - ")[0]
-        
-        # Construct the database file path from the diary name
+
+      
         current_dir = os.path.dirname(os.path.abspath(__file__))
         db_dir = "Databases"
         db_file = os.path.join(current_dir, db_dir, f"{diary_name}.db")
-        
+
         if os.path.exists(db_file):
-            conn = sqlite3.connect(db_file) 
+            conn = sqlite3.connect(db_file)
             cursor = conn.cursor()
             try:
-                cursor.execute(f"SELECT * FROM {diary_name}")
+                cursor.execute(f"SELECT * FROM {diary_name} LIMIT -1 OFFSET 1")  #bugin esto
                 records = cursor.fetchall()
-                
-                # Create the output window
-                OutputWindow = Toplevel(root, bg='#211522')
-                OutputWindow.title(f"Entries for {diary_name}")
-                OutputWindow.geometry("400x400")
-                
-                # Create a Text widget to display the records
-                text_box = Text(OutputWindow, bg='#613659', fg='white')
-                text_box.pack(fill="both", expand=True)
-                
-                # Function to display records for a given page
-                # Function to display records for a given page
-            # Function to display records for a given page
-                def display_page(page_num, page_label):
-                    text_box.delete('1.0', END)
-                    start_index = (page_num - 1) * RECORDS_PER_PAGE
-                    end_index = min(start_index + RECORDS_PER_PAGE, len(records))
-                    for record in records[start_index:end_index]:
-                        for i, field in enumerate(record):
-                            if i != len(record) - 1:  # Exclude the last field (Diary_Type)
-                                if field is not None:  # Check if the field is not None
-                                    text_box.insert(END, f"{field}\n")  # Insert each field into a new line
-                        text_box.insert(END, "\n")  # Add a newline after each record
-                    page_label.config(text=f"Page {page_num} of {num_pages}")
 
+                if records: 
+                    # Luo ikkunan
+                    OutputWindow = Toplevel(root, bg='#211522')
+                    OutputWindow.title(f"Entries for {diary_name}")
+                    OutputWindow.geometry("400x400")
 
-                
-                # Calculate the number of pages
-                num_pages = (len(records) + RECORDS_PER_PAGE - 1) // RECORDS_PER_PAGE
-                
-                # Initial display of first page
-                page_label = Label(OutputWindow, text="")
-                page_label.pack(side="top", padx=10)
-                display_page(1, page_label)
-                
-                # Navigation buttons
-                def prev_page():
-                    nonlocal current_page
-                    if current_page > 1:
-                        current_page -= 1
-                        display_page(current_page, page_label)
-                
-                def next_page():
-                    nonlocal current_page
-                    if current_page < num_pages:
-                        current_page += 1
-                        display_page(current_page, page_label)
-                
-                current_page = 1
-                prev_button = Button(OutputWindow, text="Previous", command=prev_page)
-                prev_button.place(x=5, y=370)
-                
-                next_button = Button(OutputWindow, text="Next", command=next_page)
-                next_button.place(x=360, y=370)
-                
+                   
+                    text_box = Text(OutputWindow, bg='#613659', fg='white')
+                    text_box.pack(fill="both", expand=True)
+
+                   
+                    def display_page(page_num, page_label):
+                        text_box.delete('1.0', END)
+                        start_index = (page_num - 1) * RECORDS_PER_PAGE
+                        end_index = min(start_index + RECORDS_PER_PAGE, len(records))
+                        for record in records[start_index:end_index]:
+                            for i, field in enumerate(record):
+                                if i != len(record) - 1:  
+                                    if field is not None:  
+                                        text_box.insert(END, f"{field}\n")  
+                            text_box.insert(END, "\n")  
+                        page_label.config(text=f"Page {page_num} of {num_pages}")
+
+                    
+                    num_pages = (len(records) + RECORDS_PER_PAGE - 1) // RECORDS_PER_PAGE
+
+                    
+                    page_label = Label(OutputWindow, text="")
+                    page_label.pack(side="top", padx=10)
+                    display_page(1, page_label)
+
+                    #Navigaatio napit
+                    def prev_page():
+                        nonlocal current_page
+                        if current_page > 1:
+                            current_page -= 1
+                            display_page(current_page, page_label)
+
+                    def next_page():
+                        nonlocal current_page
+                        if current_page < num_pages:
+                            current_page += 1
+                            display_page(current_page, page_label)
+
+                    current_page = 1
+                    prev_button = Button(OutputWindow, text="Previous", command=prev_page)
+                    prev_button.place(x=5, y=370)
+
+                    next_button = Button(OutputWindow, text="Next", command=next_page)
+                    next_button.place(x=360, y=370)
+                else:
+                    messagebox.showinfo("Empty Diary", "The selected diary does not contain any entries.")
             except sqlite3.Error as e:
-                messagebox.showerror("Error", f"An error occurred while accessing the Diary: {e}")
+                messagebox.showerror("Error", f"An error occurred: {e}")
             finally:
-                conn.close()  
+                conn.close()
         else:
-            messagebox.showerror("Error", "Diary does not exist.")
-
-
+            messagebox.showerror("File Not Found", "The database file for the selected diary does not exist.")
+    else:
+        messagebox.showerror("Selection Error", "Please select a diary to open.")
 
 def Input_window():
     global entry_date, entry_tasks, entry_info, entry_review, InputWindow
         
     if not diary_listbox.curselection():
         messagebox.showerror("Error", "Please select a diary before adding an entry.")
-        return  # Exit function if no item is selected
+        return  # Exit
     
     selected_index = diary_listbox.curselection()[0]
     selected_diary = diary_listbox.get(selected_index)
     diary_name = selected_diary.split(" - ")[0]
     
-    # Construct the database file path from the diary name
+    
     current_dir = os.path.dirname(os.path.abspath(__file__))
     db_dir = "Databases"
     db_file = os.path.join(current_dir, db_dir, f"{diary_name}.db")
@@ -235,7 +244,7 @@ def Input_window():
         conn = sqlite3.connect(db_file) 
         cursor = conn.cursor()
         try:
-            # Retrieve the diary type from the database
+            # hakee tyypin
             cursor.execute(f"SELECT Diary_Type FROM {diary_name}")
             diary_type = cursor.fetchone()[0]
             
@@ -243,7 +252,7 @@ def Input_window():
             InputWindow.title("New Window")
             InputWindow.geometry("200x250")
 
-            # Add automatic date entry
+            # automaattinen pvm
             label_date = Label(InputWindow, text="Date:", bg='#613659',fg='white')
             label_date.pack()
             entry_date = Entry(InputWindow)
@@ -270,8 +279,10 @@ def Input_window():
             entry_review = Entry(InputWindow)
             entry_review.pack()
 
-            button_import_click = Button(InputWindow, text="Write", command=lambda: import_click(selected_diary))
+            button_import_click = Button(InputWindow, text="Write", 
+                             command=lambda: (import_click(selected_diary), InputWindow.destroy()))
             button_import_click.pack(pady=5)
+
 
         except sqlite3.Error as e:
             messagebox.showerror("Error", f"An error occurred while accessing the Diary: {e}")
@@ -279,9 +290,7 @@ def Input_window():
             conn.close()  
     else:
         messagebox.showerror("Error", "Diary does not exist.")
-
-
-#Read Page -------------------------------------------------
+#Read Page 
 def Read_page():
     Read_frame = tk.Frame(main_frame, bg='#211522')
     Read_frame.pack(fill='both', expand=True)
@@ -289,7 +298,7 @@ def Read_page():
     header_label = tk.Label(Read_frame, text="Diaries and Last Changes", font=("Bold", 20), bg='#211522', fg='white')
     header_label.pack(pady=10)
 
-    global diary_listbox  # Make it global so that it can be accessed by open_selected function
+    global diary_listbox  
     diary_listbox = Listbox(Read_frame, bg='#211522', fg='white', width=40, height=10)
     diaries = get_diaries()
 
@@ -297,7 +306,7 @@ def Read_page():
         diary_listbox.insert(END, f"{diary['name']} - Last Change: {diary['last_change']}")
     diary_listbox.pack(pady=20)
 
-    # Bind right-click event to show delete option
+    
     diary_listbox.bind("<Button-3>", show_menu)
 
     open_button = tk.Button(Read_frame, text='Open Diary', bg='#211522', fg='white', command=open_selected)
@@ -305,7 +314,7 @@ def Read_page():
     open_button = tk.Button(Read_frame, text='Input selected', bg='#211522', fg='white', command=Input_window)
     open_button.pack(pady=10)
 
-    global output_text  # Make it global so that it can be accessed by open_selected function
+    global output_text 
     output_text = Text(Read_frame, width=60, height=10, bg='#211522', fg='white')
     output_text.pack(pady=10)
     Read_frame.pack(pady=20)
@@ -320,7 +329,7 @@ def delete_selected():
         try:
             os.remove(db_file)
             messagebox.showinfo("Success", f"Diary '{diary_name}' deleted successfully")
-            Read_page()  # Refresh the page after deletion
+            Read_page()  # refreshaa
         except FileNotFoundError:
             messagebox.showerror("Error", f"Diary '{diary_name}' does not exist")
 
@@ -346,7 +355,7 @@ def indicate(lb, page):
     delete_pages()
     page()
 
-#SIDE FRAME / OPTIONS -------------------------------------------------
+#SIDE FRAME / OPTIONS
 options_frame = tk.Frame(root, bg='#613659')
 Home_button = Button(options_frame, text="Home", font=("Bold", 15), fg='white', bd=0, bg='#613659', command=lambda: indicate(Home_indicate, Home_page))
 Home_button.place(x=10, y=50)
@@ -364,7 +373,7 @@ Read_indicate.place(x=3, y=100, width=5, height=40)
 options_frame.pack(side=tk.LEFT)
 options_frame.pack_propagate(False)
 options_frame.configure(width=150, height=400)
-#MAIN FRAME ------------------------------------------------------------
+#MAIN FRAME
 main_frame = tk.Frame(root, highlightbackground='black', bg='#211522',
                       highlightthickness=2)
 
